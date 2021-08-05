@@ -60,15 +60,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46afbd2983a5d5a7bd740ccb198caf5b82f45c40c09c0eed36052d91cb92e719"
 
 [[package]]
-name = "cast"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b9434b9a5aa1450faa3f9cb14ea0e8c53bb5d2b3c1bfd1ab4fc03e9f33fbfb0"
-dependencies = [
- "rustc_version",
-]
-
-[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -209,7 +200,6 @@ name = "embassy"
 version = "0.1.0"
 dependencies = [
  "atomic-polyfill",
- "cast",
  "cortex-m 0.7.3",
  "critical-section",
  "defmt",
@@ -221,7 +211,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "embassy-extras"
+name = "embassy-hal-common"
 version = "0.1.0"
 dependencies = [
  "cortex-m 0.7.3",
@@ -248,7 +238,7 @@ dependencies = [
  "critical-section",
  "defmt",
  "embassy",
- "embassy-extras",
+ "embassy-hal-common",
  "embassy-macros",
  "embedded-dma",
  "embedded-hal",

@@ -1,7 +1,5 @@
 #![no_std]
 #![no_main]
-#![feature(min_type_alias_impl_trait)]
-#![feature(impl_trait_in_bindings)]
 #![feature(type_alias_impl_trait)]
 #![allow(incomplete_features)]
 #![macro_use]
@@ -23,8 +21,6 @@ use embedded_hal::digital::v2::OutputPin;
 use panic_probe as _;
 use embassy_nrf::saadc::Sample;
 
-static RTC: Forever<embassy_nrf::rtc::RTC<embassy_nrf::peripherals::RTC2>> = Forever::new();
-static ALARM: Forever<embassy_nrf::rtc::Alarm<embassy_nrf::peripherals::RTC2>> = Forever::new();
 static EXECUTOR: Forever<embassy::executor::Executor> = Forever::new();
 
 const ADDRESS_SHT30: u8 = 0x44; // 68
@@ -44,9 +40,6 @@ const _ADDRESS_LIS3MDL: u8 = 0x1C; // 28
 #[cortex_m_rt::entry]
 fn main() -> ! {
     let p = embassy_nrf::init(Default::default());
-    let rtc = RTC.put(embassy_nrf::rtc::RTC::new(p.RTC2, interrupt::take!(RTC2)));
-    rtc.start();
-    unsafe { embassy::time::set_clock(rtc) };
 
     // configure gpio
     let led_d13 = Output::new(p.P1_09.degrade(), Level::Low, OutputDrive::Standard);
@@ -77,17 +70,12 @@ fn main() -> ! {
     }
 
     info!("Starting executor");
-    let alarm = rtc.alarm0();
-    let alarm = ALARM.put(alarm);
     let executor = EXECUTOR.put(embassy::executor::Executor::new());
-    executor.set_alarm(alarm);
     executor.run(|spawner| {
         unwrap!(spawner.spawn(blink(led_d13)));
         unwrap!(spawner.spawn(button(led2, switch)));
         unwrap!(spawner.spawn(i2c_devices(twim)));
         unwrap!(spawner.spawn(sample_adc(adc, adc_pin)));
-        //unwrap!(spawner.spawn(sht30(twim)));
-        //unwrap!(spawner.spawn(bmp280(twim)));
     });
 }
 
