@@ -16,10 +16,10 @@ use embassy_nrf::gpio::{Input, Level, Output, OutputDrive, Pin, Pull};
 use embassy_nrf::gpiote::{InputChannel, InputChannelPolarity};
 use embassy_nrf::interrupt;
 use embassy_nrf::peripherals::{GPIOTE_CH0, TWISPI0};
+use embassy_nrf::saadc::Sample;
 use embassy_nrf::twim::Twim;
 use embedded_hal::digital::v2::OutputPin;
 use panic_probe as _;
-use embassy_nrf::saadc::Sample;
 
 static EXECUTOR: Forever<embassy::executor::Executor> = Forever::new();
 
@@ -80,12 +80,12 @@ fn main() -> ! {
 }
 
 #[embassy::task]
-async fn sample_adc(mut adc: embassy_nrf::saadc::OneShot<'static>, mut p: embassy_nrf::peripherals::P0_29) {
-
-
-
+async fn sample_adc(
+    mut adc: embassy_nrf::saadc::OneShot<'static>,
+    mut p: embassy_nrf::peripherals::P0_29,
+) {
     loop {
-        let value = adc.sample(&mut p ).await as f32;
+        let value = adc.sample(&mut p).await as f32;
         let voltage = (value / 16384.0) * 2.0 * 3.3;
         defmt::info!("VDD is {}", voltage);
         Timer::after(Duration::from_millis(1000)).await;
@@ -120,10 +120,10 @@ async fn i2c_devices(mut twim: Twim<'static, TWISPI0>) {
     // read BMP280 calibration
     let mut calibration: [u8; 26] = [0; 26];
     let address: [u8; 1] = [0x88];
-    if let Err(_res) = I2c::write_read( &mut twim, ADDRESS_BMP280, &address, &mut calibration).await
+    if let Err(_res) = I2c::write_read(&mut twim, ADDRESS_BMP280, &address, &mut calibration).await
     {
         info!("Could not obtain BMP280 configuration, abort");
-        return
+        return;
     }
     let config = BMP280Config::from_buffer(&calibration);
 
@@ -139,13 +139,13 @@ async fn sht30(twim: &mut Twim<'static, TWISPI0>) {
     if let Err(_res) = twim.write(ADDRESS_SHT30, &buf) {
         defmt::info!("Error write SHT I2C Command, retry in 100ms");
         Timer::after(Duration::from_millis(100)).await;
-        return
+        return;
     }
     // measurement duration is maximal 15ms
     Timer::after(Duration::from_millis(20)).await;
     let mut ibuf: [u8; 6] = [0; 6];
     // use trait over method
-    if let Ok(_res) = I2c::read( twim, ADDRESS_SHT30, &mut ibuf).await {
+    if let Ok(_res) = I2c::read(twim, ADDRESS_SHT30, &mut ibuf).await {
         //defmt::info!("Got buffer {}", ibuf);
         let raw_temp = u16::from_le_bytes([ibuf[1], ibuf[0]]) as f32;
         let temp: f32 = -45.0 + 175.0 * raw_temp / 65535.0;
@@ -158,13 +158,12 @@ async fn sht30(twim: &mut Twim<'static, TWISPI0>) {
 }
 
 async fn bmp280(twim: &mut Twim<'static, TWISPI0>, config: &BMP280Config) {
-
     // start measurement
     let start_buf: [u8; 2] = [0xF4, (0x01 << 5) | (0x01 << 2) | 0x01];
     if let Err(_res) = twim.write(ADDRESS_BMP280, &start_buf) {
         defmt::info!("Error write BMP280 I2C Command, retry in 100ms");
         Timer::after(Duration::from_millis(100)).await;
-        return
+        return;
     }
 
     // wait till measurement is finished
@@ -172,7 +171,7 @@ async fn bmp280(twim: &mut Twim<'static, TWISPI0>, config: &BMP280Config) {
     // read measurements from sensor
     let mut ibuf: [u8; 6] = [0; 6];
     let address: [u8; 1] = [0xF7];
-    if let Ok(_res) = I2c::write_read( twim, ADDRESS_BMP280, &address, &mut ibuf).await {
+    if let Ok(_res) = I2c::write_read(twim, ADDRESS_BMP280, &address, &mut ibuf).await {
         let pressure_raw: i32 =
             ((ibuf[0] as i32) << (12)) | ((ibuf[1] as i32) << 4) | ((ibuf[2] >> 4) as i32);
         let temperature_raw: i32 =
