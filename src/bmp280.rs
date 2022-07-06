@@ -30,23 +30,6 @@ impl BMP280Config {
             dig_p9: i16::from_le_bytes([calibration[22], calibration[23]]) as f32,
         }
     }
-
-    pub fn example() -> BMP280Config {
-        BMP280Config {
-            dig_t1: 27504.0,
-            dig_t2: 26435.0,
-            dig_t3: -1000.0,
-            dig_p1: 36477.0,
-            dig_p2: -10685.0,
-            dig_p3: 3024.0,
-            dig_p4: 2855.0,
-            dig_p5: 140.0,
-            dig_p6: -7.0,
-            dig_p7: 15500.0,
-            dig_p8: -14600.0,
-            dig_p9: 6000.0,
-        }
-    }
 }
 
 pub fn bmp280_compensate_temp(raw: i32, config: &BMP280Config) -> (f32, f32) {

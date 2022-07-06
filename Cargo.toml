@@ -1,37 +1,18 @@
 [package]
 name = "nrf52840-embassy"
 version = "0.1.0"
-edition = "2018"
-
-[features]
-default = [
-    "defmt-default",
-]
-defmt-default = []
-defmt-trace = []
-defmt-debug = []
-defmt-info = []
-defmt-warn = []
-defmt-error = []
-
+edition = "2021"
 
 [patch.crates-io]
 embassy = { git = "https://github.com/embassy-rs/embassy" }
 embassy-nrf = { git = "https://github.com/embassy-rs/embassy" }
-embassy-traits = { git = "https://github.com/embassy-rs/embassy" }
 
 [dependencies]
-embassy = { version = "0.1.0", features = ["defmt", "defmt-trace"] }
-embassy-traits = { version = "0.1.0", features = ["defmt"] }
-embassy-nrf = { version = "0.1.0", features = ["defmt", "defmt-trace", "nrf52840", "time-driver-rtc1", "gpiote"] }
+embassy = { version = "0.1.0", features = ["defmt", "nightly"] }
+embassy-nrf = { version = "0.1.0", features = ["defmt", "nrf52840", "time-driver-rtc1", "gpiote"] }
 
-
-defmt = "0.2.0"
-defmt-rtt = "0.2.0"
-
-cortex-m = { version = "0.7.2", features = ["inline-asm"] }
+defmt = "0.3"
+defmt-rtt = "0.3"
+cortex-m = { version = "0.7.3"}
 cortex-m-rt = "0.7.0"
-embedded-hal    = { version = "0.2.4" }
-panic-probe = { version = "0.2.0", features = ["print-defmt"] }
-futures = { version = "0.3.8", default-features = false, features = ["async-await"] }
-rand = { version = "0.8.4", default-features = false }
+panic-probe = { version = "0.3", features = ["print-defmt"] }
