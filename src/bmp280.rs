@@ -1,4 +1,8 @@
-pub struct BMP280Config {
+use embassy::time::{Duration, Timer};
+
+const ADDRESS_BMP280: u8 = 0x77; //119
+
+struct BMP280Config {
     dig_t1: f32,
     dig_t2: f32,
     dig_t3: f32,
@@ -14,7 +18,7 @@ pub struct BMP280Config {
 }
 
 impl BMP280Config {
-    pub fn from_buffer(calibration: &[u8; 26]) -> BMP280Config {
+    fn from_buffer(calibration: &[u8; 26]) -> BMP280Config {
         BMP280Config {
             dig_t1: u16::from_le_bytes([calibration[0], calibration[1]]) as f32,
             dig_t2: i16::from_le_bytes([calibration[2], calibration[3]]) as f32,
@@ -32,29 +36,88 @@ impl BMP280Config {
     }
 }
 
-pub fn bmp280_compensate_temp(raw: i32, config: &BMP280Config) -> (f32, f32) {
-    let var1: f32 = (((raw as f32) / 16384.0) - (config.dig_t1 / 1024.0)) * config.dig_t2;
-    let var2: f32 = (((raw as f32) / 131072.0 - (config.dig_t1) / 8192.0)
-        * ((raw as f32) / 131072.0 - (config.dig_t1) / 8192.0))
-        * (config.dig_t3);
-    let t_fine = (var1 + var2) as f32;
-    ((var1 + var2) / 5120.0, t_fine)
+pub struct BMP280<I2C: embedded_hal_async::i2c::I2c> {
+    driver: I2C,
+    config: BMP280Config,
 }
 
-pub fn bmp280_compensate_pressure(raw: i32, t_fine: f32, config: &BMP280Config) -> f32 {
-    let var1 = (t_fine / 2.0) - 64000.0;
-    let var2 = var1 * var1 * (config.dig_p6) / 32768.0;
-    let var2 = var2 + var1 * (config.dig_p5) * 2.0;
-    let var2 = (var2 / 4.0) + ((config.dig_p4) * 65536.0);
-    let var1 = ((config.dig_p3) * var1 * var1 / 524288.0 + (config.dig_p2) * var1) / 524288.0;
-    let var1 = (1.0 + var1 / 32768.0) * (config.dig_p1);
-    if var1 == 0.0 {
-        // avoid exception caused by division by zero
-        return 0.0;
+impl<I2C: embedded_hal_async::i2c::I2c> BMP280<I2C> {
+    pub async fn new(mut driver: I2C) -> Result<Self, &'static str> {
+        // read BMP280 calibration
+        let mut calibration: [u8; 26] = [0; 26];
+        let address: [u8; 1] = [0x88];
+        if let Err(_res) = driver
+            .write_read(ADDRESS_BMP280, &address, &mut calibration)
+            .await
+        {
+            return Err("Could not obtain BMP280 configuration, abort");
+        }
+        let config = BMP280Config::from_buffer(&calibration);
+
+        Ok(Self { driver, config })
     }
-    let p = 1048576.0 - (raw as f32);
-    let p = (p - (var2 / 4096.0)) * 6250.0 / var1;
-    let var1 = (config.dig_p9) * p * p / 2147483648.0;
-    let var2 = p * (config.dig_p8) / 32768.0;
-    p + (var1 + var2 + (config.dig_p7)) / 16.0
+
+    pub async fn measure(&mut self) {
+        // start measurement
+        let start_buf: [u8; 2] = [0xF4, (0x01 << 5) | (0x01 << 2) | 0x01];
+        if let Err(_res) = self.driver.write(ADDRESS_BMP280, &start_buf).await {
+            defmt::info!("Error write BMP280 I2C Command, retry in 100ms");
+            Timer::after(Duration::from_millis(100)).await;
+            return;
+        }
+
+        // wait till measurement is finished
+        Timer::after(Duration::from_millis(20)).await;
+        // read measurements from sensor
+        let mut ibuf: [u8; 6] = [0; 6];
+        let address: [u8; 1] = [0xF7];
+        if let Ok(_res) = self
+            .driver
+            .write_read(ADDRESS_BMP280, &address, &mut ibuf)
+            .await
+        {
+            let pressure_raw: i32 =
+                ((ibuf[0] as i32) << (12)) | ((ibuf[1] as i32) << 4) | ((ibuf[2] >> 4) as i32);
+            let temperature_raw: i32 =
+                ((ibuf[3] as i32) << (12)) | ((ibuf[4] as i32) << 4) | ((ibuf[5] >> 4) as i32);
+            let (temperature, t_fine) = self.compensate_temp(temperature_raw);
+            let pressure = self.compensate_pressure(pressure_raw, t_fine);
+            defmt::info!(
+                "Temperature {} and pressure {}",
+                temperature,
+                pressure / 100.0
+            );
+        } else {
+            defmt::info!("Error reading BMP280");
+        }
+    }
+
+    fn compensate_temp(&self, raw: i32) -> (f32, f32) {
+        let var1: f32 =
+            (((raw as f32) / 16384.0) - (self.config.dig_t1 / 1024.0)) * self.config.dig_t2;
+        let var2: f32 = (((raw as f32) / 131072.0 - (self.config.dig_t1) / 8192.0)
+            * ((raw as f32) / 131072.0 - (self.config.dig_t1) / 8192.0))
+            * (self.config.dig_t3);
+        let t_fine = (var1 + var2) as f32;
+        ((var1 + var2) / 5120.0, t_fine)
+    }
+
+    fn compensate_pressure(&self, raw: i32, t_fine: f32) -> f32 {
+        let var1 = (t_fine / 2.0) - 64000.0;
+        let var2 = var1 * var1 * (self.config.dig_p6) / 32768.0;
+        let var2 = var2 + var1 * (self.config.dig_p5) * 2.0;
+        let var2 = (var2 / 4.0) + ((self.config.dig_p4) * 65536.0);
+        let var1 = ((self.config.dig_p3) * var1 * var1 / 524288.0 + (self.config.dig_p2) * var1)
+            / 524288.0;
+        let var1 = (1.0 + var1 / 32768.0) * (self.config.dig_p1);
+        if var1 == 0.0 {
+            // avoid exception caused by division by zero
+            return 0.0;
+        }
+        let p = 1048576.0 - (raw as f32);
+        let p = (p - (var2 / 4096.0)) * 6250.0 / var1;
+        let var1 = (self.config.dig_p9) * p * p / 2147483648.0;
+        let var2 = p * (self.config.dig_p8) / 32768.0;
+        p + (var1 + var2 + (self.config.dig_p7)) / 16.0
+    }
 }

@@ -234,6 +234,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "embassy-embedded-hal"
+version = "0.1.0"
+source = "git+https://github.com/embassy-rs/embassy#6baddaf53982b75149cb7e91280c571f7fe2e7bc"
+dependencies = [
+ "embassy",
+ "embedded-hal 0.2.7",
+ "embedded-hal 1.0.0-alpha.8",
+ "embedded-hal-async",
+ "embedded-storage",
+ "embedded-storage-async",
+ "nb 1.0.0",
+]
+
+[[package]]
 name = "embassy-hal-common"
 version = "0.1.0"
 source = "git+https://github.com/embassy-rs/embassy#6baddaf53982b75149cb7e91280c571f7fe2e7bc"
@@ -270,8 +284,11 @@ dependencies = [
  "embassy-macros",
  "embassy-usb",
  "embedded-hal 0.2.7",
+ "embedded-hal 1.0.0-alpha.8",
+ "embedded-hal-async",
  "embedded-io",
  "embedded-storage",
+ "embedded-storage-async",
  "fixed",
  "futures",
  "nrf52840-pac",
@@ -330,6 +347,15 @@ name = "embedded-storage"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "156d7a2fdd98ebbf9ae579cbceca3058cff946e13f8e17b90e3511db0508c723"
+
+[[package]]
+name = "embedded-storage-async"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ff04af74e47e9bb4315bd7aa2b01f3d1b05f33c03a6c4e9c3b20e9ce9cd8d79"
+dependencies = [
+ "embedded-storage",
+]
 
 [[package]]
 name = "fixed"
@@ -490,7 +516,9 @@ dependencies = [
  "defmt",
  "defmt-rtt",
  "embassy",
+ "embassy-embedded-hal",
  "embassy-nrf",
+ "embedded-hal-async",
  "panic-probe",
 ]
 
