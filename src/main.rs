@@ -14,11 +14,12 @@ use embassy::{
     time::{Duration, Timer},
     util::Forever,
 };
-use embassy_embedded_hal::shared_bus::i2c::I2cBusDevice;
+use embassy_embedded_hal::shared_bus::asynch::i2c::I2cBusDevice;
 use embassy_nrf::{
     gpio::{Input, Level, Output, OutputDrive, Pin, Pull},
     gpiote::{InputChannel, InputChannelPolarity},
     interrupt,
+    pdm::Pdm,
     peripherals::{GPIOTE_CH0, TWISPI0},
     twim::Twim,
 };
@@ -79,6 +80,11 @@ fn main() -> ! {
     // initalize shared bus for i2c to use it in multiple tasks
     let i2c_driver = I2C_DRIVER.put(Mutex::new(twim));
 
+    // the mic samples with 16 kHz
+    let pdm_config = embassy_nrf::pdm::Config::default();
+    let pdm_irq = interrupt::take!(PDM);
+    let pdm = Pdm::new(p.PDM, pdm_irq, p.P0_01, p.P0_00, pdm_config);
+
     info!("Starting executor");
     let executor = EXECUTOR.put(embassy::executor::Executor::new());
     executor.run(|spawner| {
@@ -87,7 +93,46 @@ fn main() -> ! {
         unwrap!(spawner.spawn(sht30(i2c_driver)));
         unwrap!(spawner.spawn(bmp280(i2c_driver)));
         unwrap!(spawner.spawn(sample_adc(adc)));
+        unwrap!(spawner.spawn(sample_mic(pdm)));
     });
+}
+
+#[embassy::task]
+async fn sample_mic(mut pdm: Pdm<'static>) {
+    const SAMPLES: usize = 2048;
+    const BASE_FREQUENCY: f32 = 16000.0 / SAMPLES as f32;
+
+    // some time to stabilize the microphon
+    Timer::after(Duration::from_millis(1000)).await;
+
+    loop {
+        let mut buf = [0i16; SAMPLES];
+
+        pdm.sample(&mut buf).await.unwrap();
+
+        let mut fbuf = [0.0f32; SAMPLES];
+        for i in 100..fbuf.len() {
+            fbuf[i] = buf[i] as f32;
+        }
+
+        let mut spectrum = microfft::real::rfft_2048(&mut fbuf);
+        spectrum[0].im = 0.0;
+
+        let mut amplitudes = [0u32; SAMPLES / 2];
+        let mut max_index = 0;
+        for i in 0..amplitudes.len() {
+            let amp = spectrum[i].l1_norm() as u32;
+            amplitudes[i] = amp;
+
+            if amp > amplitudes[max_index] {
+                max_index = i;
+            }
+        }
+
+        defmt::info!("Main Frequency: {:?}", max_index as f32 * BASE_FREQUENCY);
+
+        Timer::after(Duration::from_millis(500)).await;
+    }
 }
 
 #[embassy::task]

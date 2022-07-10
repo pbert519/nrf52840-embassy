@@ -204,7 +204,7 @@ dependencies = [
 [[package]]
 name = "embassy"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/embassy#6baddaf53982b75149cb7e91280c571f7fe2e7bc"
+source = "git+https://github.com/pbert519/embassy?branch=nrf-pdm-support#ac5ec99aa9ab1c4784b5260fcadf9f76de7a0f8b"
 dependencies = [
  "atomic-polyfill",
  "cfg-if",
@@ -222,7 +222,7 @@ dependencies = [
 [[package]]
 name = "embassy-cortex-m"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/embassy#6baddaf53982b75149cb7e91280c571f7fe2e7bc"
+source = "git+https://github.com/pbert519/embassy?branch=nrf-pdm-support#ac5ec99aa9ab1c4784b5260fcadf9f76de7a0f8b"
 dependencies = [
  "atomic-polyfill",
  "cfg-if",
@@ -236,7 +236,7 @@ dependencies = [
 [[package]]
 name = "embassy-embedded-hal"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/embassy#6baddaf53982b75149cb7e91280c571f7fe2e7bc"
+source = "git+https://github.com/pbert519/embassy?branch=nrf-pdm-support#ac5ec99aa9ab1c4784b5260fcadf9f76de7a0f8b"
 dependencies = [
  "embassy",
  "embedded-hal 0.2.7",
@@ -250,7 +250,7 @@ dependencies = [
 [[package]]
 name = "embassy-hal-common"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/embassy#6baddaf53982b75149cb7e91280c571f7fe2e7bc"
+source = "git+https://github.com/pbert519/embassy?branch=nrf-pdm-support#ac5ec99aa9ab1c4784b5260fcadf9f76de7a0f8b"
 dependencies = [
  "cortex-m",
  "embassy",
@@ -260,7 +260,7 @@ dependencies = [
 [[package]]
 name = "embassy-macros"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/embassy#6baddaf53982b75149cb7e91280c571f7fe2e7bc"
+source = "git+https://github.com/pbert519/embassy?branch=nrf-pdm-support#ac5ec99aa9ab1c4784b5260fcadf9f76de7a0f8b"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -271,7 +271,7 @@ dependencies = [
 [[package]]
 name = "embassy-nrf"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/embassy#6baddaf53982b75149cb7e91280c571f7fe2e7bc"
+source = "git+https://github.com/pbert519/embassy?branch=nrf-pdm-support#ac5ec99aa9ab1c4784b5260fcadf9f76de7a0f8b"
 dependencies = [
  "cfg-if",
  "cortex-m",
@@ -280,6 +280,7 @@ dependencies = [
  "defmt",
  "embassy",
  "embassy-cortex-m",
+ "embassy-embedded-hal",
  "embassy-hal-common",
  "embassy-macros",
  "embassy-usb",
@@ -298,7 +299,7 @@ dependencies = [
 [[package]]
 name = "embassy-usb"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/embassy#6baddaf53982b75149cb7e91280c571f7fe2e7bc"
+source = "git+https://github.com/pbert519/embassy?branch=nrf-pdm-support#ac5ec99aa9ab1c4784b5260fcadf9f76de7a0f8b"
 dependencies = [
  "defmt",
  "embassy",
@@ -493,6 +494,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
 
 [[package]]
+name = "microfft"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b760980d3ba929738dcc084a09c6fc4e0f36f58a90997138b94953f69dc1d8b"
+dependencies = [
+ "cfg-if",
+ "num-complex",
+ "static_assertions",
+]
+
+[[package]]
 name = "nb"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -519,6 +531,7 @@ dependencies = [
  "embassy-embedded-hal",
  "embassy-nrf",
  "embedded-hal-async",
+ "microfft",
  "panic-probe",
 ]
 
@@ -531,6 +544,15 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "vcell",
+]
+
+[[package]]
+name = "num-complex"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ae39348c8bc5fbd7f40c727a9925f03517afd2ab27d46702108b6a7e5414c19"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]
@@ -729,6 +751,12 @@ name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "strsim"

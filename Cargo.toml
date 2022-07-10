@@ -4,9 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [patch.crates-io]
-embassy = { git = "https://github.com/embassy-rs/embassy" }
-embassy-nrf = { git = "https://github.com/embassy-rs/embassy" }
-embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy" }
+#embassy = { git = "https://github.com/embassy-rs/embassy" }
+#embassy-nrf = { git = "https://github.com/embassy-rs/embassy" }
+#embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy" }
+embassy = {  git = "https://github.com/pbert519/embassy" , branch = "nrf-pdm-support" }
+embassy-nrf = { git = "https://github.com/pbert519/embassy" , branch = "nrf-pdm-support" }
+embassy-embedded-hal = {  git = "https://github.com/pbert519/embassy" , branch = "nrf-pdm-support" }
+
 
 [dependencies]
 embassy = { version = "0.1.0", features = ["defmt", "nightly"] }
@@ -20,3 +24,4 @@ defmt-rtt = "0.3"
 cortex-m = { version = "0.7.3"}
 cortex-m-rt = "0.7.0"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
+microfft = "0.5.0"
