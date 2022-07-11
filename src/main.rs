@@ -22,6 +22,7 @@ use embassy_nrf::{
     pdm::Pdm,
     peripherals::{GPIOTE_CH0, TWISPI0},
     twim::Twim,
+    qspi::*,
 };
 
 use defmt::{info, unwrap};
@@ -85,6 +86,14 @@ fn main() -> ! {
     let pdm_irq = interrupt::take!(PDM);
     let pdm = Pdm::new(p.PDM, pdm_irq, p.P0_01, p.P0_00, pdm_config);
 
+    // qspi flash interface
+    let mut qspi_config = embassy_nrf::qspi::Config::default();
+    //qspi_config.read_opcode = ReadOpcode::READ4IO;
+    //qspi_config.write_opcode = WriteOpcode::PP4IO;
+    //qspi_config.write_page_size = WritePageSize::_256BYTES;
+    let qspi_irq = interrupt::take!(QSPI);
+    let qspi: Qspi<'_, _,16777216> = Qspi::new(p.QSPI, qspi_irq, p.P0_19, p.P0_20, p.P0_17, p.P0_22, p.P0_23, p.P0_21, qspi_config);
+
     info!("Starting executor");
     let executor = EXECUTOR.put(embassy::executor::Executor::new());
     executor.run(|spawner| {
@@ -111,9 +120,12 @@ async fn sample_mic(mut pdm: Pdm<'static>) {
         pdm.sample(&mut buf).await.unwrap();
 
         let mut fbuf = [0.0f32; SAMPLES];
+        let mut sum: u64 = 0;
         for i in 100..fbuf.len() {
             fbuf[i] = buf[i] as f32;
+            sum += buf[i].abs() as u64;
         }
+        let loudness = sum / SAMPLES as u64;
 
         let mut spectrum = microfft::real::rfft_2048(&mut fbuf);
         spectrum[0].im = 0.0;
@@ -129,7 +141,8 @@ async fn sample_mic(mut pdm: Pdm<'static>) {
             }
         }
 
-        defmt::info!("Main Frequency: {:?}", max_index as f32 * BASE_FREQUENCY);
+        defmt::info!("Sound level: {:?}", loudness);
+        defmt::info!("Main Frequency: {:?} with Amplitude: {:?}", max_index as f32 * BASE_FREQUENCY, amplitudes[max_index]);
 
         Timer::after(Duration::from_millis(500)).await;
     }
