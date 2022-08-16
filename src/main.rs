@@ -3,24 +3,28 @@
 #![feature(type_alias_impl_trait)]
 
 mod bmp280;
+mod neopixel;
 mod sht30;
 
 use crate::bmp280::*;
 use crate::sht30::*;
 
-use embassy::{
+use embassy_util::{
     blocking_mutex::raw::CriticalSectionRawMutex,
     mutex::Mutex,
-    time::{Duration, Timer},
-    util::Forever,
+    Forever
 };
-use embassy_embedded_hal::shared_bus::asynch::i2c::I2cBusDevice;
+use embassy_executor::{
+    time::{Duration, Timer},
+};
+use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_nrf::{
     gpio::{Input, Level, Output, OutputDrive, Pin, Pull},
     gpiote::{InputChannel, InputChannelPolarity},
     interrupt,
     pdm::Pdm,
-    peripherals::{GPIOTE_CH0, TWISPI0},
+    peripherals::{GPIOTE_CH0, TWISPI0, TWISPI1},
+    spim::Spim,
     twim::Twim,
     qspi::*,
 };
@@ -29,18 +33,17 @@ use defmt::{info, unwrap};
 use defmt_rtt as _; // global logger
 use panic_probe as _;
 
-static EXECUTOR: Forever<embassy::executor::Executor> = Forever::new();
+static EXECUTOR: Forever<embassy_executor::executor::Executor> = Forever::new();
 static I2C_DRIVER: Forever<Mutex<CriticalSectionRawMutex, Twim<TWISPI0>>> = Forever::new();
 
 const _ADDRESS_APDS9960: u8 = 0x39; // 57
 const _ADDRESS_LSM6DS33: u8 = 0x6A; // 106
 const _ADDRESS_LIS3MDL: u8 = 0x1C; // 28
 
-// neopixel P0.16  -> SPI
 // lsm6ds22 int P1.11 -> GPIO Input
 // apds int P1.00 -> GPIO Input
-// pdm_dat P0.00
-// pdm_clk P0.01
+// qspi flash
+// usb
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
@@ -94,8 +97,14 @@ fn main() -> ! {
     let qspi_irq = interrupt::take!(QSPI);
     let qspi: Qspi<'_, _,16777216> = Qspi::new(p.QSPI, qspi_irq, p.P0_19, p.P0_20, p.P0_17, p.P0_22, p.P0_23, p.P0_21, qspi_config);
 
+    // spi
+    let mut spi_config = embassy_nrf::spim::Config::default();
+    spi_config.frequency = embassy_nrf::spim::Frequency::M2;
+    let spi_irq = interrupt::take!(SPIM1_SPIS1_TWIM1_TWIS1_SPI1_TWI1);
+    let spi = Spim::new_txonly(p.TWISPI1, spi_irq, p.P0_15, p.P0_16, spi_config);
+
     info!("Starting executor");
-    let executor = EXECUTOR.put(embassy::executor::Executor::new());
+    let executor = EXECUTOR.put(embassy_executor::executor::Executor::new());
     executor.run(|spawner| {
         unwrap!(spawner.spawn(blink(led_d13)));
         unwrap!(spawner.spawn(button(led2, switch)));
@@ -103,10 +112,31 @@ fn main() -> ! {
         unwrap!(spawner.spawn(bmp280(i2c_driver)));
         unwrap!(spawner.spawn(sample_adc(adc)));
         unwrap!(spawner.spawn(sample_mic(pdm)));
-    });
+        unwrap!(spawner.spawn(neopixel(spi)));
+        // unwrap!(spawner.spawn(display(i2c_driver)));
+    })
 }
 
-#[embassy::task]
+#[embassy_executor::task]
+async fn display(twim_mutex: &'static embassy_util::blocking_mutex::Mutex<CriticalSectionRawMutex, core::cell::RefCell<Twim<'static, TWISPI0>>>) {
+    let twim_dev = embassy_embedded_hal::shared_bus::blocking::i2c::I2cDevice::new(twim_mutex);
+    
+    let mut display = ssd1306::Ssd1306::new(
+        ssd1306::I2CDisplayInterface::new(twim_dev),
+        ssd1306::size::DisplaySize128x32,
+        ssd1306::rotation::DisplayRotation::Rotate0,
+    ).into_buffered_graphics_mode();
+    ssd1306::prelude::DisplayConfig::init(&mut display);
+    let text_style = embedded_graphics::mono_font::MonoTextStyleBuilder::new()
+        .font(&embedded_graphics::mono_font::ascii::FONT_10X20)
+        .text_color(embedded_graphics::pixelcolor::BinaryColor::On)
+        .build();
+    embedded_graphics::Drawable::draw(&embedded_graphics::text::Text::with_baseline("Hello world!", embedded_graphics::prelude::Point::zero(), text_style, embedded_graphics::text::Baseline::Top), &mut display)
+        .unwrap();
+    display.flush().unwrap();
+}
+
+#[embassy_executor::task]
 async fn sample_mic(mut pdm: Pdm<'static>) {
     const SAMPLES: usize = 2048;
     const BASE_FREQUENCY: f32 = 16000.0 / SAMPLES as f32;
@@ -148,7 +178,7 @@ async fn sample_mic(mut pdm: Pdm<'static>) {
     }
 }
 
-#[embassy::task]
+#[embassy_executor::task]
 async fn sample_adc(mut adc: embassy_nrf::saadc::Saadc<'static, 1>) {
     loop {
         let mut buf = [0; 1];
@@ -159,7 +189,7 @@ async fn sample_adc(mut adc: embassy_nrf::saadc::Saadc<'static, 1>) {
     }
 }
 
-#[embassy::task]
+#[embassy_executor::task]
 async fn blink(mut led_d13: Output<'static, embassy_nrf::gpio::AnyPin>) {
     loop {
         led_d13.set_high();
@@ -169,7 +199,7 @@ async fn blink(mut led_d13: Output<'static, embassy_nrf::gpio::AnyPin>) {
     }
 }
 
-#[embassy::task]
+#[embassy_executor::task]
 async fn button(
     mut led: Output<'static, embassy_nrf::gpio::AnyPin>,
     input: InputChannel<'static, GPIOTE_CH0, embassy_nrf::gpio::AnyPin>,
@@ -182,9 +212,9 @@ async fn button(
     }
 }
 
-#[embassy::task]
+#[embassy_executor::task]
 async fn sht30(twim_mutex: &'static Mutex<CriticalSectionRawMutex, Twim<'static, TWISPI0>>) {
-    let twim_dev = I2cBusDevice::new(twim_mutex);
+    let twim_dev = I2cDevice::new(twim_mutex);
 
     let mut sht30 = SHT30::new(twim_dev);
 
@@ -194,14 +224,28 @@ async fn sht30(twim_mutex: &'static Mutex<CriticalSectionRawMutex, Twim<'static,
     }
 }
 
-#[embassy::task]
+#[embassy_executor::task]
 async fn bmp280(twim_mutex: &'static Mutex<CriticalSectionRawMutex, Twim<'static, TWISPI0>>) {
-    let twim_dev = I2cBusDevice::new(twim_mutex);
+    let twim_dev = I2cDevice::new(twim_mutex);
 
     if let Ok(mut bmp280) = BMP280::new(twim_dev).await {
         loop {
             bmp280.measure().await;
             Timer::after(Duration::from_millis(1000)).await;
         }
+    }
+}
+
+#[embassy_executor::task]
+async fn neopixel(spi: Spim<'static, TWISPI1>) {
+    let mut neopixel = neopixel::Neopixel::new(spi);
+
+    let mut counter: u8 = 0;
+    loop {
+        neopixel.set_pixel(0, 0, 0).await;
+        if counter >= 100 {
+            counter = 0;
+        }
+        Timer::after(Duration::from_millis(10));
     }
 }

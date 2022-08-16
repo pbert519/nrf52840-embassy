@@ -1,4 +1,4 @@
-use embassy::time::{Duration, Timer};
+use embassy_executor::time::{Duration, Timer};
 
 const ADDRESS_SHT30: u8 = 0x44; // 68
 

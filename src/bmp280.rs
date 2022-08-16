@@ -1,4 +1,4 @@
-use embassy::time::{Duration, Timer};
+use embassy_executor::time::{Duration, Timer};
 
 const ADDRESS_BMP280: u8 = 0x77; //119
 
