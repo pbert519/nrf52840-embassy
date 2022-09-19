@@ -1,4 +1,4 @@
-use embassy_executor::time::{Duration, Timer};
+use embassy_time::{Duration, Timer};
 
 const ADDRESS_BMP280: u8 = 0x77; //119
 
@@ -36,13 +36,18 @@ impl BMP280Config {
     }
 }
 
+pub struct Measurment {
+    pub temp: f32,
+    pub pressure: f32,
+}
+
 pub struct BMP280<I2C: embedded_hal_async::i2c::I2c> {
     driver: I2C,
     config: BMP280Config,
 }
 
 impl<I2C: embedded_hal_async::i2c::I2c> BMP280<I2C> {
-    pub async fn new(mut driver: I2C) -> Result<Self, &'static str> {
+    pub async fn new(mut driver: I2C) -> Result<Self, ()> {
         // read BMP280 calibration
         let mut calibration: [u8; 26] = [0; 26];
         let address: [u8; 1] = [0x88];
@@ -50,20 +55,18 @@ impl<I2C: embedded_hal_async::i2c::I2c> BMP280<I2C> {
             .write_read(ADDRESS_BMP280, &address, &mut calibration)
             .await
         {
-            return Err("Could not obtain BMP280 configuration, abort");
+            return Err(());
         }
         let config = BMP280Config::from_buffer(&calibration);
 
         Ok(Self { driver, config })
     }
 
-    pub async fn measure(&mut self) {
+    pub async fn measure(&mut self) -> Result<Measurment, ()> {
         // start measurement
         let start_buf: [u8; 2] = [0xF4, (0x01 << 5) | (0x01 << 2) | 0x01];
         if let Err(_res) = self.driver.write(ADDRESS_BMP280, &start_buf).await {
-            defmt::info!("Error write BMP280 I2C Command, retry in 100ms");
-            Timer::after(Duration::from_millis(100)).await;
-            return;
+            return Err(());
         }
 
         // wait till measurement is finished
@@ -80,15 +83,11 @@ impl<I2C: embedded_hal_async::i2c::I2c> BMP280<I2C> {
                 ((ibuf[0] as i32) << (12)) | ((ibuf[1] as i32) << 4) | ((ibuf[2] >> 4) as i32);
             let temperature_raw: i32 =
                 ((ibuf[3] as i32) << (12)) | ((ibuf[4] as i32) << 4) | ((ibuf[5] >> 4) as i32);
-            let (temperature, t_fine) = self.compensate_temp(temperature_raw);
+            let (temp, t_fine) = self.compensate_temp(temperature_raw);
             let pressure = self.compensate_pressure(pressure_raw, t_fine);
-            defmt::info!(
-                "Temperature {} and pressure {}",
-                temperature,
-                pressure / 100.0
-            );
+            Ok(Measurment { temp, pressure })
         } else {
-            defmt::info!("Error reading BMP280");
+            Err(())
         }
     }
 
