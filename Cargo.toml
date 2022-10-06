@@ -29,3 +29,12 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 microfft = "0.5.0"
 ssd1306 = "0.7.1"
 embedded-graphics = "0.7.1"
+embedded-storage = "0.3.0"
+bincode = { version = "2.0.0-rc.2", default-features = false, features = ["derive"]}
+
+[profile.release]
+# symbols are nice and they don't increase the size on Flash
+debug = true
+
+[profile.dev.package."*"] 
+opt-level = 2 

@@ -20,7 +20,7 @@ use embassy_nrf::{
 
 pub const EXTERNAL_FLASH_SIZE: usize = 2097152; // 2048kByte
 pub const EXTERNAL_FLASH_PAGE_SIZE: usize = 256; // 256Byte per programmable flash page
-pub const EXTERNAL_FLASH_BLOCK_SIZE: usize = 4096; // 4096Byte sector are the smallest unit to erase
+pub const _EXTERNAL_FLASH_BLOCK_SIZE: usize = 4096; // 4096Byte sector are the smallest unit to erase
 
 pub struct Board {
     /// onboard red led

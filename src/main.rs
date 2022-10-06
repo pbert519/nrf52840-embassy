@@ -4,12 +4,14 @@
 
 mod bmp280;
 mod board_config;
+mod log_storage;
 mod neopixel;
 mod sht30;
 
 use crate::bmp280::*;
 use crate::sht30::*;
 
+use defmt::Format;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
 use embassy_nrf::{
@@ -30,6 +32,13 @@ use panic_probe as _;
 
 static SHARED_TWIM: StaticCell<Mutex<CriticalSectionRawMutex, Twim<TWISPI0>>> = StaticCell::new();
 
+#[derive(bincode::Encode, bincode::Decode, PartialEq, Debug, Format)]
+pub struct LogData {
+    pub temperature: f32,
+    pub humidity: f32,
+    pub pressure: f32,
+}
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_nrf::init(Default::default());
@@ -45,21 +54,8 @@ async fn main(spawner: Spawner) {
         }
     }
 
-    // test qspi interface
-    #[repr(C, align(4))]
-    struct AlignedBuf([u8; board_config::EXTERNAL_FLASH_PAGE_SIZE]);
-    let mut buf = AlignedBuf([0u8; board_config::EXTERNAL_FLASH_PAGE_SIZE]);
-    let mut qspi = b.qspi;
-
-    info!("sector 0: erasing... ");
-    qspi.erase(0).await.unwrap();
-    qspi.read(0, &mut buf.0).await.unwrap();
-    info!("{}", buf.0);
-    info!("programming...");
-    buf.0 = [106; board_config::EXTERNAL_FLASH_PAGE_SIZE];
-    qspi.write(0, &buf.0).await.unwrap();
-    qspi.read(0, &mut buf.0).await.unwrap();
-    info!("{}", buf.0);
+    // test qspi storage
+    test_storage(b.qspi);
 
     let shared_twim = SHARED_TWIM.init(Mutex::new(twim));
 
@@ -72,6 +68,40 @@ async fn main(spawner: Spawner) {
     unwrap!(spawner.spawn(bmp280(shared_twim)));
 
     unwrap!(spawner.spawn(display(b.twim_disp)));
+}
+
+fn test_storage(
+    qspi: embassy_nrf::qspi::Qspi<
+        'static,
+        embassy_nrf::peripherals::QSPI,
+        { board_config::EXTERNAL_FLASH_SIZE },
+    >,
+) {
+    let mut storage = log_storage::LogStorage::<_, LogData>::new(qspi);
+    storage
+        .add_entry(LogData {
+            temperature: 11.1,
+            humidity: 22.2,
+            pressure: 33.3,
+        })
+        .unwrap();
+    storage
+        .add_entry(LogData {
+            temperature: 111.1,
+            humidity: 122.2,
+            pressure: 133.3,
+        })
+        .unwrap();
+    storage
+        .add_entry(LogData {
+            temperature: 211.1,
+            humidity: 222.2,
+            pressure: 233.3,
+        })
+        .unwrap();
+    info!("Number of entries: {}", storage.len());
+    let data = storage.at(storage.len() - 1).unwrap();
+    info!("Last LogEntry: {:?}", &data);
 }
 
 #[embassy_executor::task]
@@ -104,7 +134,7 @@ async fn display(twim_dev: Twim<'static, TWISPI1>) {
 async fn sample_mic(mut pdm: Pdm<'static>) {
     const SAMPLES: usize = 2048;
     const BASE_FREQUENCY: f32 = 16000.0 / SAMPLES as f32;
-
+    pdm.start().await;
     // some time to stabilize the microphon
     Timer::after(Duration::from_millis(1000)).await;
 
