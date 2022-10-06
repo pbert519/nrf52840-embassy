@@ -18,6 +18,10 @@ use embassy_nrf::{
     twim::Twim,
 };
 
+pub const EXTERNAL_FLASH_SIZE: usize = 2097152; // 2048kByte
+pub const EXTERNAL_FLASH_PAGE_SIZE: usize = 256; // 256Byte per programmable flash page
+pub const EXTERNAL_FLASH_BLOCK_SIZE: usize = 4096; // 4096Byte sector are the smallest unit to erase
+
 pub struct Board {
     /// onboard red led
     pub led_d13: Output<'static, AnyPin>,
@@ -36,7 +40,7 @@ pub struct Board {
     /// additonal i2c interface for external oled screen
     pub twim_disp: Twim<'static, TWISPI1>,
     /// qspi interface for onbard flash
-    pub qspi: Qspi<'static, QSPI, 16777216>,
+    pub qspi: Qspi<'static, QSPI, EXTERNAL_FLASH_SIZE>,
 }
 
 impl Board {
@@ -78,10 +82,10 @@ impl Board {
         // qspi flash interface
         let mut qspi_config = embassy_nrf::qspi::Config::default();
         qspi_config.read_opcode = ReadOpcode::READ4IO;
-        qspi_config.write_opcode = WriteOpcode::PP4IO;
+        qspi_config.write_opcode = WriteOpcode::PP4O;
         qspi_config.write_page_size = WritePageSize::_256BYTES;
         let qspi_irq = interrupt::take!(QSPI);
-        let qspi: Qspi<'_, _, 16777216> = Qspi::new(
+        let mut qspi: Qspi<'_, _, EXTERNAL_FLASH_SIZE> = Qspi::new(
             p.QSPI,
             qspi_irq,
             p.P0_19,
@@ -92,6 +96,19 @@ impl Board {
             p.P0_21,
             qspi_config,
         );
+        let mut status = [0; 2];
+        // Read status register
+        qspi.blocking_custom_instruction(0x05, &[], &mut status[..1])
+            .unwrap();
+        qspi.blocking_custom_instruction(0x35, &[], &mut status[1..2])
+            .unwrap();
+        // bit 9 is quad enable
+        if status[1] & 0x02 == 0 {
+            status[1] = 0x02;
+            // Write status register to enable quad spi
+            qspi.blocking_custom_instruction(0x01, &status, &mut [])
+                .unwrap();
+        }
 
         // spi
         let mut spi_config = embassy_nrf::spim::Config::default();

@@ -45,6 +45,22 @@ async fn main(spawner: Spawner) {
         }
     }
 
+    // test qspi interface
+    #[repr(C, align(4))]
+    struct AlignedBuf([u8; board_config::EXTERNAL_FLASH_PAGE_SIZE]);
+    let mut buf = AlignedBuf([0u8; board_config::EXTERNAL_FLASH_PAGE_SIZE]);
+    let mut qspi = b.qspi;
+
+    info!("sector 0: erasing... ");
+    qspi.erase(0).await.unwrap();
+    qspi.read(0, &mut buf.0).await.unwrap();
+    info!("{}", buf.0);
+    info!("programming...");
+    buf.0 = [106; board_config::EXTERNAL_FLASH_PAGE_SIZE];
+    qspi.write(0, &buf.0).await.unwrap();
+    qspi.read(0, &mut buf.0).await.unwrap();
+    info!("{}", buf.0);
+
     let shared_twim = SHARED_TWIM.init(Mutex::new(twim));
 
     unwrap!(spawner.spawn(blink(b.led_d13)));
