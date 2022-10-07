@@ -7,6 +7,7 @@ mod board_config;
 mod log_storage;
 mod neopixel;
 mod sht30;
+mod softdevice;
 
 use crate::bmp280::*;
 use crate::sht30::*;
@@ -14,6 +15,7 @@ use crate::sht30::*;
 use defmt::Format;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
+use embassy_nrf::interrupt;
 use embassy_nrf::{
     gpio::Output,
     gpiote::InputChannel,
@@ -26,7 +28,7 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Duration, Timer};
 use static_cell::StaticCell;
 
-use defmt::{info, unwrap};
+use defmt::info;
 use defmt_rtt as _; // global logger
 use panic_probe as _;
 
@@ -41,7 +43,10 @@ pub struct LogData {
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let p = embassy_nrf::init(Default::default());
+    let mut embassy_config = embassy_nrf::config::Config::default();
+    embassy_config.time_interrupt_priority = interrupt::Priority::P2;
+    embassy_config.gpiote_interrupt_priority = interrupt::Priority::P7;
+    let p = embassy_nrf::init(embassy_config);
     let b = board_config::Board::configure(p);
 
     let mut twim = b.twim;
@@ -54,20 +59,28 @@ async fn main(spawner: Spawner) {
         }
     }
 
+    // softdevice
+    let sd = softdevice::configure_softdevice();
+    let server = softdevice::Server::new(sd).unwrap();
+    spawner.spawn(softdevice::softdevice_task(sd)).unwrap();
+    spawner
+        .spawn(softdevice::gatt_server_task(sd, server))
+        .unwrap();
+
     // test qspi storage
     test_storage(b.qspi);
 
     let shared_twim = SHARED_TWIM.init(Mutex::new(twim));
 
-    unwrap!(spawner.spawn(blink(b.led_d13)));
-    unwrap!(spawner.spawn(button(b.led2, b.switch)));
-    unwrap!(spawner.spawn(sample_adc(b.adc)));
-    unwrap!(spawner.spawn(sample_mic(b.pdm)));
-    unwrap!(spawner.spawn(neopixel(b.spi)));
-    unwrap!(spawner.spawn(sht30(shared_twim)));
-    unwrap!(spawner.spawn(bmp280(shared_twim)));
+    spawner.spawn(blink(b.led_d13)).unwrap();
+    spawner.spawn(button(b.led2, b.switch)).unwrap();
+    spawner.spawn(sample_adc(b.adc)).unwrap();
+    spawner.spawn(sample_mic(b.pdm)).unwrap();
+    spawner.spawn(neopixel(b.spi)).unwrap();
+    spawner.spawn(sht30(shared_twim)).unwrap();
+    spawner.spawn(bmp280(shared_twim)).unwrap();
 
-    unwrap!(spawner.spawn(display(b.twim_disp)));
+    spawner.spawn(display(b.twim_disp)).unwrap();
 }
 
 fn test_storage(

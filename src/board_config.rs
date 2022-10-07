@@ -9,7 +9,7 @@ const _ADDRESS_LIS3MDL: u8 = 0x1C; // 28
 use embassy_nrf::{
     gpio::{AnyPin, Input, Level, Output, OutputDrive, Pin, Pull},
     gpiote::{InputChannel, InputChannelPolarity},
-    interrupt,
+    interrupt::{self, InterruptExt, Priority},
     pdm::Pdm,
     peripherals::{GPIOTE_CH0, QSPI, SPI3, TWISPI0, TWISPI1},
     qspi::*,
@@ -56,27 +56,27 @@ impl Board {
 
         // configure adc
         let adc_config = embassy_nrf::saadc::Config::default();
+        let adc_irq = interrupt::take!(SAADC);
+        adc_irq.set_priority(Priority::P3);
         let channel_config = embassy_nrf::saadc::ChannelConfig::single_ended(&mut p.P0_29);
-        let adc = embassy_nrf::saadc::Saadc::new(
-            p.SAADC,
-            interrupt::take!(SAADC),
-            adc_config,
-            [channel_config],
-        );
+        let adc = embassy_nrf::saadc::Saadc::new(p.SAADC, adc_irq, adc_config, [channel_config]);
 
         // configure twi
         let twim_config = embassy_nrf::twim::Config::default();
         let twim_irq = interrupt::take!(SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0);
+        twim_irq.set_priority(Priority::P3);
         let twim = Twim::new(p.TWISPI0, twim_irq, p.P0_12, p.P0_11, twim_config);
 
         // configure twi
         let twim_config_disp = embassy_nrf::twim::Config::default();
         let twim_irq_disp = interrupt::take!(SPIM1_SPIS1_TWIM1_TWIS1_SPI1_TWI1);
+        twim_irq_disp.set_priority(Priority::P3);
         let twim_disp = Twim::new(p.TWISPI1, twim_irq_disp, p.P1_08, p.P0_07, twim_config_disp);
 
         // the mic samples with 16 kHz
         let pdm_config = embassy_nrf::pdm::Config::default();
         let pdm_irq = interrupt::take!(PDM);
+        pdm_irq.set_priority(Priority::P3);
         let pdm = Pdm::new(p.PDM, pdm_irq, p.P0_01, p.P0_00, pdm_config);
 
         // qspi flash interface
@@ -85,6 +85,7 @@ impl Board {
         qspi_config.write_opcode = WriteOpcode::PP4O;
         qspi_config.write_page_size = WritePageSize::_256BYTES;
         let qspi_irq = interrupt::take!(QSPI);
+        qspi_irq.set_priority(Priority::P3);
         let mut qspi: Qspi<'_, _, EXTERNAL_FLASH_SIZE> = Qspi::new(
             p.QSPI,
             qspi_irq,
@@ -114,13 +115,16 @@ impl Board {
         let mut spi_config = embassy_nrf::spim::Config::default();
         spi_config.frequency = embassy_nrf::spim::Frequency::M4;
         let spi_irq = interrupt::take!(SPIM3);
+        spi_irq.set_priority(Priority::P3);
         let spi = Spim::new_txonly(p.SPI3, spi_irq, p.P0_15, p.P0_16, spi_config);
 
         // usb
-        let usb_irq = interrupt::take!(USBD);
-        let usb_power_irq = interrupt::take!(POWER_CLOCK);
-        let usb_power = embassy_nrf::usb::PowerUsb::new(usb_power_irq);
-        let _usb_driver = embassy_nrf::usb::Driver::new(p.USBD, usb_irq, usb_power);
+        // let usb_irq = interrupt::take!(USBD);
+        // usb_irq.set_priority(Priority::P3);
+        // let usb_power_irq = interrupt::take!(POWER_CLOCK);
+        // usb_power_irq.set_priority(Priority::P3);
+        // let usb_power = embassy_nrf::usb::PowerUsb::new(usb_power_irq);
+        // let _usb_driver = embassy_nrf::usb::Driver::new(p.USBD, usb_irq, usb_power);
 
         Board {
             led_d13,
