@@ -1,3 +1,5 @@
+#![allow(clippy::enum_variant_names)]
+
 use nrf_softdevice::ble::{gatt_server, peripheral};
 use nrf_softdevice::{raw, Softdevice};
 
@@ -47,7 +49,6 @@ pub struct BatteryService {
     #[characteristic(uuid = "2a19", read, notify)]
     pub battery_level: i16,
 }
-
 #[nrf_softdevice::gatt_service(uuid = "181A")]
 pub struct EnviromentalSensingService {
     #[characteristic(uuid = "2A6D", read, notify)]
@@ -78,7 +79,7 @@ pub fn configure_softdevice() -> &'static mut Softdevice {
         }),
         conn_gatt: Some(raw::ble_gatt_conn_cfg_t { att_mtu: 256 }),
         gatts_attr_tab_size: Some(raw::ble_gatts_cfg_attr_tab_size_t {
-            attr_tab_size: raw::BLE_GATTS_ATTR_TAB_SIZE_DEFAULT.into(),
+            attr_tab_size: raw::BLE_GATTS_ATTR_TAB_SIZE_DEFAULT,
         }),
         gap_role_count: Some(raw::ble_gap_cfg_role_count_t {
             adv_set_count: raw::BLE_GAP_ADV_SET_COUNT_DEFAULT as u8,
