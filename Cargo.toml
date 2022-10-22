@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [patch.crates-io]
-embassy-executor = {  git = "https://github.com/pbert519/embassy" , branch = "nrf-pdm-support" }
-embassy-sync = {  git = "https://github.com/pbert519/embassy" , branch = "nrf-pdm-support" }
-embassy-nrf = { git = "https://github.com/pbert519/embassy" , branch = "nrf-pdm-support" }
-embassy-time = { git = "https://github.com/pbert519/embassy" , branch = "nrf-pdm-support" }
-embassy-embedded-hal = {  git = "https://github.com/pbert519/embassy" , branch = "nrf-pdm-support" }
+embassy-executor = {  git = "https://github.com/embassy-rs/embassy" , branch = "master" }
+embassy-sync = {  git = "https://github.com/embassy-rs/embassy" , branch = "master" }
+embassy-nrf = { git = "https://github.com/embassy-rs/embassy" , branch = "master" }
+embassy-time = { git = "https://github.com/embassy-rs/embassy" , branch = "master" }
+embassy-embedded-hal = {  git = "https://github.com/embassy-rs/embassy" , branch = "master" }
 
 nrf-softdevice = { git = "https://github.com/embassy-rs/nrf-softdevice" , branch = "master" }
 nrf-softdevice-s140 = { git = "https://github.com/embassy-rs/nrf-softdevice" , branch = "master" }
@@ -21,7 +21,7 @@ embassy-time = { version = "0.1.0", features = ["defmt"] }
 embassy-embedded-hal = "0.1.0" 
 embedded-hal-async = "0.1.0-alpha.1"
 
-nrf-softdevice = { version = "0.1.0", features = ["ble-gatt-server", "defmt", "nrf52840", "s140", "ble-peripheral", "ble-central", "critical-section-impl"] }
+nrf-softdevice = { version = "0.1.0", features = ["ble-gatt-server", "defmt", "nrf52840", "s140", "ble-peripheral", "critical-section-impl"] }
 nrf-softdevice-s140 = { version = "0.1.1" }
 
 static_cell = "1.0"
