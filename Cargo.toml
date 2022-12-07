@@ -19,7 +19,7 @@ embassy-sync = { version = "0.1.0", features = ["defmt"] }
 embassy-nrf = { version = "0.1.0", features = ["defmt", "nrf52840", "time-driver-rtc1", "gpiote", "unstable-traits", "nightly"] }
 embassy-time = { version = "0.1.0", features = ["defmt"] }
 embassy-embedded-hal = "0.1.0" 
-embedded-hal-async = "0.1.0-alpha.1"
+embedded-hal-async = "0.2.0-alpha.0"
 
 nrf-softdevice = { version = "0.1.0", features = ["ble-gatt-server", "defmt", "nrf52840", "s140", "ble-peripheral", "critical-section-impl"] }
 nrf-softdevice-s140 = { version = "0.1.1" }
@@ -27,14 +27,14 @@ nrf-softdevice-s140 = { version = "0.1.1" }
 static_cell = "1.0"
 defmt = "0.3"
 defmt-rtt = "0.3"
-cortex-m = { version = "0.7.6" }
-cortex-m-rt = "0.7.0"
+cortex-m = { version = "0.7" }
+cortex-m-rt = "0.7"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 
-microfft = "0.5.0"
-ssd1306 = "0.7.1"
-embedded-graphics = "0.7.1"
-embedded-storage = "0.3.0"
+microfft = "0.5"
+ssd1306 = "0.7"
+embedded-graphics = "0.7"
+embedded-storage = "0.3"
 bincode = { version = "2.0.0-rc.2", default-features = false, features = ["derive"]}
 
 [profile.release]

@@ -97,7 +97,7 @@ impl<I2C: embedded_hal_async::i2c::I2c> BMP280<I2C> {
         let var2: f32 = (((raw as f32) / 131072.0 - (self.config.dig_t1) / 8192.0)
             * ((raw as f32) / 131072.0 - (self.config.dig_t1) / 8192.0))
             * (self.config.dig_t3);
-        let t_fine = (var1 + var2) as f32;
+        let t_fine = var1 + var2;
         ((var1 + var2) / 5120.0, t_fine)
     }
 
