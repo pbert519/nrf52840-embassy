@@ -2,15 +2,11 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
-mod bmp280;
 mod board_config;
-mod log_storage;
-mod neopixel;
-mod sht30;
+mod driver;
 mod softdevice;
 
-use crate::bmp280::*;
-use crate::sht30::*;
+use crate::driver::{bmp280::*, log_storage::*, neopixel::*, sht30::*};
 
 use defmt::Format;
 use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
@@ -90,7 +86,7 @@ fn test_storage(
         { board_config::EXTERNAL_FLASH_SIZE },
     >,
 ) {
-    let mut storage = log_storage::LogStorage::<_, LogData>::new(qspi);
+    let mut storage = LogStorage::<_, LogData>::new(qspi);
     storage
         .add_entry(LogData {
             temperature: 11.1,
@@ -267,7 +263,7 @@ async fn bmp280(twim_mutex: &'static Mutex<CriticalSectionRawMutex, Twim<'static
 
 #[embassy_executor::task]
 async fn neopixel(spi: Spim<'static, SPI3>) {
-    let mut neopixel = neopixel::Neopixel::new(spi);
+    let mut neopixel = Neopixel::new(spi);
 
     let mut counter: u8 = 0;
     loop {
