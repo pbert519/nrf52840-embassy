@@ -1,7 +1,10 @@
 #![allow(clippy::enum_variant_names)]
 
+use embassy_futures::select::select4;
 use nrf_softdevice::ble::{gatt_server, peripheral};
 use nrf_softdevice::{raw, Softdevice};
+
+use crate::message_hub::MessageSubscriber;
 
 #[embassy_executor::task]
 pub async fn softdevice_task(sd: &'static Softdevice) -> ! {
@@ -9,7 +12,11 @@ pub async fn softdevice_task(sd: &'static Softdevice) -> ! {
 }
 
 #[embassy_executor::task]
-pub async fn gatt_server_task(sd: &'static Softdevice, server: Server) {
+pub async fn gatt_server_task(
+    sd: &'static Softdevice,
+    server: Server,
+    mut msg_sub: MessageSubscriber,
+) {
     #[rustfmt::skip]
     let adv_data = &[
         0x02, 0x01, raw::BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE as u8,
@@ -30,17 +37,40 @@ pub async fn gatt_server_task(sd: &'static Softdevice, server: Server) {
             .await
             .unwrap();
 
-        let gat_res = gatt_server::run(&conn, &server, |e| match e {
+        let sht30_fut = async {
+            loop {
+                let m = msg_sub.temp_humidity_sub.next_message_pure().await;
+                let temp: i16 = (m.temperature * 100.0) as i16;
+                let humidity: i16 = (m.humidity * 100.0) as i16;
+                let _ = server.env.temperature_notify(&conn, &temp);
+                let _ = server.env.humidity_notify(&conn, &humidity);
+            }
+        };
+        let pressure_fut = async {
+            loop {
+                let pressure = msg_sub.pressure_sub.next_message_pure().await;
+                let pressure: i32 = (pressure * 10.0) as i32;
+                let _ = server.env.pressure_notify(&conn, &pressure);
+            }
+        };
+        let battery_fut = async {
+            loop {
+                let battery = msg_sub.battery_voltage_sub.next_message_pure().await;
+                let battery: i16 = (battery / 4.2 * 100.0) as i16;
+                let _ = server.bas.battery_level_notify(&conn, &battery);
+            }
+        };
+
+        let gatt_fut = gatt_server::run(&conn, &server, |e| match e {
             ServerEvent::Bas(e) => match e {
                 BatteryServiceEvent::BatteryLevelCccdWrite { notifications } => {
                     defmt::info!("battery notifications: {}", notifications)
                 }
             },
             ServerEvent::Env(_) => {}
-        })
-        .await;
+        });
 
-        defmt::info!("Gatt Service stopped: {}", gat_res);
+        select4(sht30_fut, pressure_fut, battery_fut, gatt_fut).await;
     }
 }
 
@@ -52,7 +82,7 @@ pub struct BatteryService {
 #[nrf_softdevice::gatt_service(uuid = "181A")]
 pub struct EnviromentalSensingService {
     #[characteristic(uuid = "2A6D", read, notify)]
-    pub pressure: i16,
+    pub pressure: i32,
     #[characteristic(uuid = "2A6E", read, notify)]
     pub temperature: i16,
     #[characteristic(uuid = "2A6F", read, notify)]

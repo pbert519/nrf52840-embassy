@@ -3,7 +3,6 @@
 //! ToDo: Find and use old entries after power cycle
 
 use bincode::{config, error::DecodeError, error::EncodeError, Decode, Encode};
-use defmt::info;
 use embedded_storage::nor_flash::NorFlash;
 
 const PAGE_SIZE: usize = crate::board_config::EXTERNAL_FLASH_PAGE_SIZE;
@@ -68,9 +67,9 @@ where
         // erase flash
         if tmp.sync_flash().is_err() {
             tmp.erase_all();
-            info!("No previous flash pages found!.");
+            defmt::debug!("No previous flash pages found!.");
         } else {
-            info!("Found {} entries in flash", tmp.head);
+            defmt::debug!("Found {} entries in flash", tmp.head);
         }
         tmp
     }

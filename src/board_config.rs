@@ -44,7 +44,12 @@ pub struct Board {
 }
 
 impl Board {
-    pub fn configure(mut p: embassy_nrf::Peripherals) -> Board {
+    pub fn init() -> Board {
+        let mut embassy_config = embassy_nrf::config::Config::default();
+        embassy_config.time_interrupt_priority = interrupt::Priority::P2;
+        embassy_config.gpiote_interrupt_priority = interrupt::Priority::P7;
+        let mut p = embassy_nrf::init(embassy_config);
+
         // configure gpio
         let led_d13 = Output::new(p.P1_09.degrade(), Level::Low, OutputDrive::Standard);
         let led2 = Output::new(p.P1_10.degrade(), Level::Low, OutputDrive::Standard);
