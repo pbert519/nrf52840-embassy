@@ -1,34 +1,45 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
+#![feature(default_alloc_error_handler)]
 
 mod board_config;
+mod display;
 mod driver;
+mod message_hub;
+mod sensors;
 mod softdevice;
 
-use crate::driver::{bmp280::*, log_storage::*, neopixel::*, sht30::*};
+use crate::driver::{log_storage::*, neopixel::*};
+use display::*;
+use message_hub::*;
+use sensors::*;
+
+#[macro_use]
+extern crate alloc;
 
 use defmt::Format;
-use embassy_embedded_hal::shared_bus::asynch::i2c::I2cDevice;
 use embassy_executor::Spawner;
-use embassy_nrf::interrupt;
 use embassy_nrf::{
     gpio::Output,
     gpiote::InputChannel,
     pdm::Pdm,
-    peripherals::{GPIOTE_CH0, SPI3, TWISPI0, TWISPI1},
+    peripherals::{GPIOTE_CH0, SPI3, TWISPI0},
     spim::Spim,
     twim::Twim,
 };
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use embassy_time::{Duration, Timer};
-use static_cell::StaticCell;
 
-use defmt::info;
 use defmt_rtt as _; // global logger
 use panic_probe as _;
 
-static SHARED_TWIM: StaticCell<Mutex<CriticalSectionRawMutex, Twim<TWISPI0>>> = StaticCell::new();
+#[global_allocator]
+static ALLOCATOR: alloc_cortex_m::CortexMHeap = alloc_cortex_m::CortexMHeap::empty();
+
+static SHARED_TWIM: static_cell::StaticCell<Mutex<CriticalSectionRawMutex, Twim<TWISPI0>>> =
+    static_cell::StaticCell::new();
+static MEASSGE_HUB: static_cell::StaticCell<MessageHub> = static_cell::StaticCell::new();
 
 #[derive(bincode::Encode, bincode::Decode, PartialEq, Debug, Format)]
 pub struct LogData {
@@ -39,44 +50,69 @@ pub struct LogData {
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let mut embassy_config = embassy_nrf::config::Config::default();
-    embassy_config.time_interrupt_priority = interrupt::Priority::P2;
-    embassy_config.gpiote_interrupt_priority = interrupt::Priority::P7;
-    let p = embassy_nrf::init(embassy_config);
-    let b = board_config::Board::configure(p);
+    let b = board_config::Board::init();
+    let shared_twim = SHARED_TWIM.init(Mutex::new(b.twim));
+    let message_hub = MEASSGE_HUB.init(MessageHub::new());
 
-    let mut twim = b.twim;
+    // Initialize the allocator
+    {
+        use core::mem::MaybeUninit;
+        const HEAP_SIZE: usize = 1024;
+        static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+        unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
+    }
     // scan i2c devices
+    defmt::info!("Scan I2C Devices on interface TWISPI0");
     let mut buf = [0u8, 8];
     for x in 0..127 {
-        let res = twim.blocking_read(x, &mut buf);
+        let res = shared_twim.lock().await.blocking_read(x, &mut buf);
         if res == Ok(()) {
-            info!("Found device on address {}", x);
+            defmt::info!("Found device on address {}", x);
         }
     }
-
-    // softdevice
-    let sd = softdevice::configure_softdevice();
-    let server = softdevice::Server::new(sd).unwrap();
-    spawner.spawn(softdevice::softdevice_task(sd)).unwrap();
-    spawner
-        .spawn(softdevice::gatt_server_task(sd, server))
-        .unwrap();
 
     // test qspi storage
     test_storage(b.qspi);
 
-    let shared_twim = SHARED_TWIM.init(Mutex::new(twim));
+    // softdevice
+    let sd = softdevice::configure_softdevice();
+    let server = softdevice::Server::new(sd).unwrap();
 
+    // Spin-up all tasks
+    spawner.spawn(softdevice::softdevice_task(sd)).unwrap();
+    spawner
+        .spawn(softdevice::gatt_server_task(
+            sd,
+            server,
+            message_hub.subscriber(),
+        ))
+        .unwrap();
     spawner.spawn(blink(b.led_d13)).unwrap();
     spawner.spawn(button(b.led2, b.switch)).unwrap();
-    spawner.spawn(sample_adc(b.adc)).unwrap();
+    spawner
+        .spawn(sample_battery_voltage(
+            b.adc,
+            message_hub.battery_voltage.dyn_immediate_publisher(),
+        ))
+        .unwrap();
     spawner.spawn(sample_mic(b.pdm)).unwrap();
     spawner.spawn(neopixel(b.spi)).unwrap();
-    spawner.spawn(sht30(shared_twim)).unwrap();
-    spawner.spawn(bmp280(shared_twim)).unwrap();
+    spawner
+        .spawn(sht30(
+            shared_twim,
+            message_hub.temperature_humidity.dyn_immediate_publisher(),
+        ))
+        .unwrap();
+    spawner
+        .spawn(bmp280(
+            shared_twim,
+            message_hub.pressure.dyn_immediate_publisher(),
+        ))
+        .unwrap();
 
-    spawner.spawn(display(b.twim_disp)).unwrap();
+    spawner
+        .spawn(display(b.twim_disp, message_hub.subscriber()))
+        .unwrap();
 }
 
 fn test_storage(
@@ -108,35 +144,9 @@ fn test_storage(
             pressure: 233.3,
         })
         .unwrap();
-    info!("Number of entries: {}", storage.len());
+    defmt::info!("Number of entries: {}", storage.len());
     let data = storage.at(storage.len() - 1).unwrap();
-    info!("Last LogEntry: {:?}", &data);
-}
-
-#[embassy_executor::task]
-async fn display(twim_dev: Twim<'static, TWISPI1>) {
-    let mut display = ssd1306::Ssd1306::new(
-        ssd1306::I2CDisplayInterface::new(twim_dev),
-        ssd1306::size::DisplaySize128x32,
-        ssd1306::rotation::DisplayRotation::Rotate0,
-    )
-    .into_buffered_graphics_mode();
-    ssd1306::prelude::DisplayConfig::init(&mut display).unwrap();
-    let text_style = embedded_graphics::mono_font::MonoTextStyleBuilder::new()
-        .font(&embedded_graphics::mono_font::ascii::FONT_10X20)
-        .text_color(embedded_graphics::pixelcolor::BinaryColor::On)
-        .build();
-    embedded_graphics::Drawable::draw(
-        &embedded_graphics::text::Text::with_baseline(
-            "Hello world!",
-            embedded_graphics::prelude::Point::zero(),
-            text_style,
-            embedded_graphics::text::Baseline::Top,
-        ),
-        &mut display,
-    )
-    .unwrap();
-    display.flush().unwrap();
+    defmt::info!("Last LogEntry: {:?}", &data);
 }
 
 #[embassy_executor::task]
@@ -186,17 +196,6 @@ async fn sample_mic(mut pdm: Pdm<'static>) {
 }
 
 #[embassy_executor::task]
-async fn sample_adc(mut adc: embassy_nrf::saadc::Saadc<'static, 1>) {
-    loop {
-        let mut buf = [0; 1];
-        adc.sample(&mut buf).await;
-        let voltage = (buf[0] as f32 / 16384.0) * 2.0 * 3.3;
-        defmt::info!("VDD is {}", voltage);
-        Timer::after(Duration::from_millis(1000)).await;
-    }
-}
-
-#[embassy_executor::task]
 async fn blink(mut led_d13: Output<'static, embassy_nrf::gpio::AnyPin>) {
     loop {
         led_d13.set_high();
@@ -216,48 +215,6 @@ async fn button(
         led.set_high();
         input.wait().await;
         led.set_low();
-    }
-}
-
-#[embassy_executor::task]
-async fn sht30(twim_mutex: &'static Mutex<CriticalSectionRawMutex, Twim<'static, TWISPI0>>) {
-    let twim_dev = I2cDevice::new(twim_mutex);
-
-    let mut sht30 = SHT30::new(twim_dev);
-
-    loop {
-        if let Ok(measurement) = sht30.measure().await {
-            defmt::info!(
-                "Temperature: {} and Humidity: {}",
-                measurement.temp,
-                measurement.humidity
-            );
-        } else {
-            defmt::info!("SHT Error, retry in 100ms");
-        }
-        Timer::after(Duration::from_millis(1000)).await;
-    }
-}
-
-#[embassy_executor::task]
-async fn bmp280(twim_mutex: &'static Mutex<CriticalSectionRawMutex, Twim<'static, TWISPI0>>) {
-    let twim_dev = I2cDevice::new(twim_mutex);
-
-    if let Ok(mut bmp280) = BMP280::new(twim_dev).await {
-        loop {
-            if let Ok(measurment) = bmp280.measure().await {
-                defmt::info!(
-                    "Temperature {} and pressure {}",
-                    measurment.temp,
-                    measurment.pressure / 100.0
-                );
-            } else {
-                defmt::info!("Error reading BMP280");
-            }
-            Timer::after(Duration::from_millis(1000)).await;
-        }
-    } else {
-        defmt::info!("Could not obtain BMP280 configuration, abort BMP280 task");
     }
 }
 
