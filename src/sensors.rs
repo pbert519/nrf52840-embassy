@@ -16,7 +16,7 @@ pub async fn sample_battery_voltage(
     loop {
         let mut buf = [0; 1];
         adc.sample(&mut buf).await;
-        let voltage = (buf[0] as f32 / 16384.0) * 2.0 * 3.3;
+        let voltage = (buf[0] as f32 / 4096.0) * 2.0 * 3.3;
         batt_pub.publish_immediate(voltage);
         Timer::after(Duration::from_millis(1000)).await;
     }

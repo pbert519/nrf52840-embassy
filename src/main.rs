@@ -22,13 +22,14 @@ use defmt::Format;
 use embassy_executor::Spawner;
 use embassy_nrf::{
     gpio::Output,
-    gpiote::InputChannel,
     pdm::Pdm,
-    peripherals::{GPIOTE_CH0, SPI3, TWISPI0},
+    peripherals::{SPI3, TWISPI0},
     spim::Spim,
     twim::Twim,
 };
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex, pubsub::DynImmediatePublisher,
+};
 use embassy_time::{Duration, Timer};
 
 use defmt_rtt as _; // global logger
@@ -87,15 +88,19 @@ async fn main(spawner: Spawner) {
             message_hub.subscriber(),
         ))
         .unwrap();
-    spawner.spawn(blink(b.led_d13)).unwrap();
-    spawner.spawn(button(b.led2, b.switch)).unwrap();
+    spawner.spawn(blink(b.led_d13, b.led2)).unwrap();
     spawner
         .spawn(sample_battery_voltage(
             b.adc,
             message_hub.battery_voltage.dyn_immediate_publisher(),
         ))
         .unwrap();
-    spawner.spawn(sample_mic(b.pdm)).unwrap();
+    spawner
+        .spawn(sample_mic(
+            b.pdm,
+            message_hub.mic_data.dyn_immediate_publisher(),
+        ))
+        .unwrap();
     spawner.spawn(neopixel(b.spi)).unwrap();
     spawner
         .spawn(sht30(
@@ -111,7 +116,7 @@ async fn main(spawner: Spawner) {
         .unwrap();
 
     spawner
-        .spawn(display(b.twim_disp, message_hub.subscriber()))
+        .spawn(display(b.twim_disp, message_hub.subscriber(), b.switch))
         .unwrap();
 }
 
@@ -150,8 +155,8 @@ fn test_storage(
 }
 
 #[embassy_executor::task]
-async fn sample_mic(mut pdm: Pdm<'static>) {
-    const SAMPLES: usize = 2048;
+async fn sample_mic(mut pdm: Pdm<'static>, mic_pub: DynImmediatePublisher<'static, [u16; 128]>) {
+    const SAMPLES: usize = 256;
     const BASE_FREQUENCY: f32 = 16000.0 / SAMPLES as f32;
     pdm.start().await;
     // some time to stabilize the microphon
@@ -163,58 +168,37 @@ async fn sample_mic(mut pdm: Pdm<'static>) {
         pdm.sample(&mut buf).await.unwrap();
 
         let mut fbuf = [0.0f32; SAMPLES];
-        let mut sum: u64 = 0;
-        for i in 100..fbuf.len() {
+        for i in 0..fbuf.len() {
             fbuf[i] = buf[i] as f32;
-            sum += buf[i].unsigned_abs() as u64;
         }
-        let loudness = sum / SAMPLES as u64;
 
-        let mut spectrum = microfft::real::rfft_2048(&mut fbuf);
+        let mut spectrum = microfft::real::rfft_256(&mut fbuf);
         spectrum[0].im = 0.0;
 
-        let mut amplitudes = [0u32; SAMPLES / 2];
-        let mut max_index = 0;
+        let mut amplitudes = [0u16; SAMPLES / 2];
         for i in 0..amplitudes.len() {
-            let amp = spectrum[i].l1_norm() as u32;
+            let amp = spectrum[i].l1_norm() as u16;
             amplitudes[i] = amp;
-
-            if amp > amplitudes[max_index] {
-                max_index = i;
-            }
         }
 
-        defmt::info!("Sound level: {:?}", loudness);
-        defmt::info!(
-            "Main Frequency: {:?} with Amplitude: {:?}",
-            max_index as f32 * BASE_FREQUENCY,
-            amplitudes[max_index]
-        );
+        mic_pub.publish_immediate(amplitudes);
 
         Timer::after(Duration::from_millis(500)).await;
     }
 }
 
 #[embassy_executor::task]
-async fn blink(mut led_d13: Output<'static, embassy_nrf::gpio::AnyPin>) {
-    loop {
-        led_d13.set_high();
-        Timer::after(Duration::from_millis(300)).await;
-        led_d13.set_low();
-        Timer::after(Duration::from_millis(300)).await;
-    }
-}
-
-#[embassy_executor::task]
-async fn button(
+async fn blink(
+    mut led_d13: Output<'static, embassy_nrf::gpio::AnyPin>,
     mut led: Output<'static, embassy_nrf::gpio::AnyPin>,
-    input: InputChannel<'static, GPIOTE_CH0, embassy_nrf::gpio::AnyPin>,
 ) {
     loop {
-        input.wait().await;
+        led_d13.set_high();
         led.set_high();
-        input.wait().await;
+        Timer::after(Duration::from_millis(300)).await;
+        led_d13.set_low();
         led.set_low();
+        Timer::after(Duration::from_millis(300)).await;
     }
 }
 

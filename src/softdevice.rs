@@ -1,6 +1,6 @@
 #![allow(clippy::enum_variant_names)]
 
-use embassy_futures::select::select4;
+use embassy_futures::select::{select, select4};
 use nrf_softdevice::ble::{gatt_server, peripheral};
 use nrf_softdevice::{raw, Softdevice};
 
@@ -56,10 +56,19 @@ pub async fn gatt_server_task(
         let battery_fut = async {
             loop {
                 let battery = msg_sub.battery_voltage_sub.next_message_pure().await;
-                let battery: i16 = (battery / 4.2 * 100.0) as i16;
+                let battery: i16 = ((battery - 3.0) / 1.2 * 100.0) as i16;
                 let _ = server.bas.battery_level_notify(&conn, &battery);
             }
         };
+        let mic_fut = async {
+            loop {
+                let amplitudes = msg_sub.mic_sub.next_message_pure().await;
+                for a in amplitudes {
+                    let _ = server.mic.spectrum_notify(&conn, &a);
+                }
+            }
+        };
+        let data_fut = select4(sht30_fut, pressure_fut, battery_fut, mic_fut);
 
         let gatt_fut = gatt_server::run(&conn, &server, |e| match e {
             ServerEvent::Bas(e) => match e {
@@ -68,9 +77,10 @@ pub async fn gatt_server_task(
                 }
             },
             ServerEvent::Env(_) => {}
+            ServerEvent::Mic(_) => {}
         });
 
-        select4(sht30_fut, pressure_fut, battery_fut, gatt_fut).await;
+        select(data_fut, gatt_fut).await;
     }
 }
 
@@ -89,10 +99,17 @@ pub struct EnviromentalSensingService {
     pub humidity: i16,
 }
 
+#[nrf_softdevice::gatt_service(uuid = "c644611a-67bc-4807-a6f8-fccbd23cc6e5")]
+pub struct MicrophoneService {
+    #[characteristic(uuid = "c644611a-67bf-4807-a6f8-fccbd23cc6e5", read, notify)]
+    pub spectrum: u16,
+}
+
 #[nrf_softdevice::gatt_server]
 pub struct Server {
     pub bas: BatteryService,
     pub env: EnviromentalSensingService,
+    pub mic: MicrophoneService,
 }
 
 pub fn configure_softdevice() -> &'static mut Softdevice {
