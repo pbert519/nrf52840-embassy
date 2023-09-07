@@ -40,7 +40,7 @@ pub async fn display(
     loop {
         let disp_fut = async {
             loop {
-                display.clear();
+                let _ = display.clear(BinaryColor::Off);
 
                 match mode {
                     DisplayMode::EnviormentData => {
