@@ -10,11 +10,11 @@
 // low  -> 0x08 = 0b0001000 -> 0.3125us high, 0.9375 low
 // high -> 0x0E = 0b0001110 -> 0.9375us high, 0.3125 low
 
-pub struct Neopixel<SPI: embedded_hal_async::spi::SpiBusWrite> {
+pub struct Neopixel<SPI: embedded_hal_async::spi::SpiBus> {
     driver: SPI,
 }
 
-impl<SPI: embedded_hal_async::spi::SpiBusWrite> Neopixel<SPI> {
+impl<SPI: embedded_hal_async::spi::SpiBus> Neopixel<SPI> {
     pub fn new(driver: SPI) -> Self {
         Self { driver }
     }

@@ -1,7 +1,6 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
-#![feature(default_alloc_error_handler)]
 
 mod board_config;
 mod display;
@@ -120,13 +119,7 @@ async fn main(spawner: Spawner) {
         .unwrap();
 }
 
-fn test_storage(
-    qspi: embassy_nrf::qspi::Qspi<
-        'static,
-        embassy_nrf::peripherals::QSPI,
-        { board_config::EXTERNAL_FLASH_SIZE },
-    >,
-) {
+fn test_storage(qspi: embassy_nrf::qspi::Qspi<'static, embassy_nrf::peripherals::QSPI>) {
     let mut storage = LogStorage::<_, LogData>::new(qspi);
     storage
         .add_entry(LogData {
@@ -155,9 +148,12 @@ fn test_storage(
 }
 
 #[embassy_executor::task]
-async fn sample_mic(mut pdm: Pdm<'static>, mic_pub: DynImmediatePublisher<'static, [u16; 128]>) {
+async fn sample_mic(
+    mut pdm: Pdm<'static, embassy_nrf::peripherals::PDM>,
+    mic_pub: DynImmediatePublisher<'static, [u16; 128]>,
+) {
     const SAMPLES: usize = 256;
-    const BASE_FREQUENCY: f32 = 16000.0 / SAMPLES as f32;
+    const _BASE_FREQUENCY: f32 = 16000.0 / SAMPLES as f32;
     pdm.start().await;
     // some time to stabilize the microphon
     Timer::after(Duration::from_millis(1000)).await;
@@ -172,7 +168,7 @@ async fn sample_mic(mut pdm: Pdm<'static>, mic_pub: DynImmediatePublisher<'stati
             fbuf[i] = buf[i] as f32;
         }
 
-        let mut spectrum = microfft::real::rfft_256(&mut fbuf);
+        let spectrum = microfft::real::rfft_256(&mut fbuf);
         spectrum[0].im = 0.0;
 
         let mut amplitudes = [0u16; SAMPLES / 2];
@@ -183,7 +179,7 @@ async fn sample_mic(mut pdm: Pdm<'static>, mic_pub: DynImmediatePublisher<'stati
 
         mic_pub.publish_immediate(amplitudes);
 
-        Timer::after(Duration::from_millis(500)).await;
+        Timer::after(Duration::from_millis(100)).await;
     }
 }
 
