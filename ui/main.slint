@@ -1,0 +1,113 @@
+component UnitValue inherits Text{
+    vertical-alignment: center;
+    font-size: 13px;
+    color: white;
+}
+
+struct ValueScreenModel {
+    left_top: string,
+    right_top: string,
+    left_bottom: string,
+    right_bottom: string
+}
+
+export component ValueScreen {
+    in property <ValueScreenModel> model;
+
+    GridLayout {
+        property <length> padding-side: 0px;
+        property <length> cell-width: self.width / 2 - self.padding-side - self.spacing / 2;
+        property <length> cell-height: self.height /2 - self.padding - self.spacing /2;
+        padding: 0px;
+        padding-right: self.padding-side;
+        padding-left:  self.padding-side;
+        spacing: 0px;
+        
+        Row {
+            UnitValue {
+                width: cell-width;
+                text: root.model.left-top;
+            }
+            UnitValue {
+                width: cell-width;  
+                text: root.model.right-top;
+            }
+        }
+        Row {
+            UnitValue {
+                width: cell-width;
+                text: root.model.left-bottom;
+            }
+            UnitValue {
+                width: cell-width;
+                text: root.model.right-bottom;
+            }
+        }
+    }    
+}
+
+
+export component Spectrum {
+    in property <[int]> values;
+
+    HorizontalLayout {
+        for value in values: Rectangle {
+            y: 0;
+            width: 1px;
+            height: value * 1px;
+            background: white;
+        }
+    }
+}
+
+
+export component Top inherits Window {
+    height: 32px;
+    width: 128px;
+    background: black;
+
+    in property <ValueScreenModel> values;
+    in property <[int]> spectrum;
+    in-out property <bool> valueScreenActive: true;
+
+    if valueScreenActive: ValueScreen {
+        width: parent.width;
+        height: parent.height;
+        model: root.values;
+    }
+    if !valueScreenActive : Spectrum {
+        width: parent.width;
+        height: parent.height;
+        values: root.spectrum;
+    }
+
+    popup := PopupWindow {
+       width: 64px; 
+       height: 16px;
+       Rectangle { 
+        height:100%; 
+        width: 100%; 
+        background: black;
+        border-color: white;
+        border-width: 1px; 
+        Text {
+            text: "Key pressed";
+            color: white;
+            }
+        }
+    }
+
+    forward-focus: key-handler;
+    key-handler := FocusScope {
+        property <bool> popupOpen: false;
+
+        key-pressed(event) => {
+            if (event.text == Key.Return) {
+                root.valueScreenActive = !root.valueScreenActive;
+            }
+            accept
+        }
+    }
+
+    
+}

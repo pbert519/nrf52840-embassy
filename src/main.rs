@@ -7,11 +7,13 @@ mod driver;
 mod message_hub;
 mod sensors;
 mod softdevice;
+mod ui;
 
 use crate::driver::{log_storage::*, neopixel::*};
 use display::*;
 use message_hub::*;
 use sensors::*;
+use ui::*;
 
 #[macro_use]
 extern crate alloc;
@@ -56,7 +58,7 @@ async fn main(spawner: Spawner) {
     // Initialize the allocator
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 1024;
+        const HEAP_SIZE: usize = 1024 * 64;
         static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
     }
@@ -71,7 +73,7 @@ async fn main(spawner: Spawner) {
     }
 
     // test qspi storage
-    test_storage(b.qspi);
+    //test_storage(b.qspi);
 
     // softdevice
     let sd = softdevice::configure_softdevice();
@@ -114,7 +116,7 @@ async fn main(spawner: Spawner) {
         .unwrap();
 
     spawner
-        .spawn(display(b.twim_disp, message_hub.subscriber(), b.switch))
+        .spawn(run_ui(b.twim_disp, message_hub.subscriber(), b.switch))
         .unwrap();
 }
 

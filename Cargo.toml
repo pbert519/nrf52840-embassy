@@ -28,10 +28,16 @@ ssd1306 = "0.8"
 embedded-graphics = "0.8"
 embedded-storage = "0.3"
 bincode = { version = "2.0.0-rc.3", default-features = false, features = ["derive"]}
+slint = { version = "1.2.0", default-features = false, features = ["compat-1-2", "unsafe-single-threaded", "libm", "renderer-software"] }
 
 [profile.release]
 # symbols are nice and they don't increase the size on Flash
 debug = true
+codegen-units = 1
+lto = true
 
 [profile.dev.package."*"] 
 opt-level = 2
+
+[build-dependencies]
+slint-build = "1.2.0"
